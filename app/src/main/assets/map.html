@@ -33,7 +33,7 @@
   .hidden { display: none !important; }
   .glass { background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--line); box-shadow: var(--shadow); }
-  svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2;
+  :not(.leaflet-pane) > svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2;
     stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
   /* ---------- search ---------- */
@@ -170,7 +170,7 @@
 
   /* ---------- directions / live traffic ---------- */
   #routeCard { position: fixed; z-index: 960; left: calc(var(--safe-left) + 12px); right: calc(var(--safe-right) + 12px);
-    bottom: calc(var(--safe-bottom) + 12px); border-radius: var(--radius); padding: 12px 14px; max-height: 44vh; overflow-y: auto; }
+    bottom: calc(var(--safe-bottom) + 12px); border-radius: var(--radius); padding: 12px 14px; max-height: 40vh; overflow-y: auto; }
   @media (min-width: 600px) { #routeCard { right: auto; width: 440px; } }
   .rc-head { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
   .rc-main { flex: 1; min-width: 0; }
@@ -197,7 +197,7 @@
   .inc-pop b { font-size: 14px; } .inc-pop small { display: block; color: var(--muted); margin-top: 3px; line-height: 1.4; }
   .fab.on.traffic { background: #66bb6a; }
   body.routing #fabs { bottom: calc(var(--safe-bottom) + var(--card-h, 220px) + 24px); }
-  body.routing #status, body.routing .leaflet-control-scale { display: none; }
+  body.routing #status, body.routing .leaflet-control-scale, body.routing #btnIss { display: none; }
   .keyrow input { flex: 1; min-width: 0; background: rgba(255,255,255,.07); border: 1px solid var(--line); color: var(--text);
     border-radius: 10px; padding: 9px 10px; font: inherit; font-size: 14px; -webkit-user-select: text; user-select: text; }
   .keyrow .chip { flex: none; padding: 9px 18px; background: var(--accent); color: #0b1220; }
