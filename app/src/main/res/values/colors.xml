@@ -1,0 +1,7 @@
+<resources>
+    <color name="space">#0B1220</color>
+    <color name="accent">#4FC3F7</color>
+    <color name="text_primary">#E8EEF7</color>
+    <color name="text_secondary">#9AA8BC</color>
+    <color name="icon_bg">#0B1D33</color>
+</resources>

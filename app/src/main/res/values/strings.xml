@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Live Satellite Map</string>
+    <string name="offline_title">No internet connection</string>
+    <string name="offline_message">Live Satellite Map needs the internet to load satellite imagery. Check your Wi-Fi or mobile data and try again.</string>
+    <string name="retry">Try again</string>
+    <string name="share_location">Share location</string>
+    <string name="copied">Copied to clipboard</string>
+    <string name="location_off">Turn on Location (GPS) to find where you are</string>
+    <string name="location_denied">Location permission denied</string>
+</resources>

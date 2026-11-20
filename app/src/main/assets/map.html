@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<title>Live Satellite Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<style>
+  :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --glass: rgba(16, 22, 34, 0.84);
+    --glass-strong: rgba(14, 19, 30, 0.96);
+    --line: rgba(255, 255, 255, 0.09);
+    --text: #e8eef7;
+    --muted: #9aa8bc;
+    --accent: #4fc3f7;
+    --accent-2: #ffd54f;
+    --danger: #ff6b6b;
+    --radius: 16px;
+    --shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #0b1220; color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  input { -webkit-user-select: text; user-select: text; }
+  #map { position: fixed; inset: 0; background: #0b1220; }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+  .hidden { display: none !important; }
+  .glass { background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--line); box-shadow: var(--shadow); }
+  svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* ---------- search ---------- */
+  #topbar { position: fixed; z-index: 1000; top: calc(var(--safe-top) + 10px);
+    left: calc(var(--safe-left) + 12px); right: calc(var(--safe-right) + 12px); }
+  .search { display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 8px 0 16px;
+    border-radius: 25px; }
+  .search input { flex: 1; min-width: 0; height: 100%; background: none; border: 0; outline: 0;
+    color: var(--text); font-size: 16px; }
+  .search input::placeholder { color: var(--muted); }
+  .search input::-webkit-search-cancel-button { display: none; }
+  .icon-btn { width: 38px; height: 38px; border-radius: 19px; display: grid; place-items: center; color: var(--muted); }
+  .icon-btn:active { background: rgba(255,255,255,.08); }
+  .live-pill { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 14px;
+    background: rgba(255, 107, 107, .14); color: #ff9b9b; font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+  .live-pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); animation: blink 1.4s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  .results { margin-top: 8px; border-radius: var(--radius); overflow: hidden; max-height: 50vh; overflow-y: auto; }
+  .result { display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left;
+    padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .result:last-child { border-bottom: 0; }
+  .result:active { background: rgba(255,255,255,.06); }
+  .result b { display: block; font-weight: 600; font-size: 15px; }
+  .result small { color: var(--muted); font-size: 12.5px; line-height: 1.35; display: block; margin-top: 2px; }
+  .result svg { color: var(--accent); margin-top: 2px; }
+  .result.empty { color: var(--muted); justify-content: center; }
+
+  /* ---------- floating buttons ---------- */
+  #fabs { position: fixed; z-index: 900; right: calc(var(--safe-right) + 12px);
+    bottom: calc(var(--safe-bottom) + 64px); display: flex; flex-direction: column; gap: 12px; }
+  .fab { width: 52px; height: 52px; border-radius: 26px; display: grid; place-items: center; position: relative; }
+  .fab:active { transform: scale(.94); }
+  .fab.on { color: #0b1220; background: var(--accent); border-color: transparent; }
+  .fab.on.iss { background: var(--accent-2); }
+  .fab .badge { position: absolute; top: 4px; right: 4px; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--danger); border: 2px solid #0b1220; }
+
+  /* ---------- status chip ---------- */
+  #status { position: fixed; z-index: 800; left: calc(var(--safe-left) + 12px);
+    bottom: calc(var(--safe-bottom) + 24px); padding: 7px 12px; border-radius: 14px;
+    font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; display: flex; gap: 8px; align-items: center; }
+  #status b { color: var(--text); font-weight: 600; }
+
+  /* ---------- ISS card ---------- */
+  #issCard { position: fixed; z-index: 950; left: calc(var(--safe-left) + 12px); right: calc(var(--safe-right) + 76px);
+    bottom: calc(var(--safe-bottom) + 64px); border-radius: var(--radius); padding: 14px 14px 12px; max-width: 420px; }
+  .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .card-head .title { flex: 1; }
+  .card-head b { display: block; font-size: 15px; }
+  .card-head small { color: var(--muted); font-size: 12px; }
+  .iss-dot { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+    background: rgba(255, 213, 79, .15); color: var(--accent-2); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+  .stat small { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  .stat span { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .card-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .chip { flex: 1; padding: 9px 10px; border-radius: 12px; background: rgba(255,255,255,.07);
+    font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .chip.on { background: rgba(255, 213, 79, .18); color: var(--accent-2); }
+  .chip svg { width: 16px; height: 16px; }
+
+  /* ---------- layer sheet ---------- */
+  #scrim { position: fixed; inset: 0; z-index: 1900; background: rgba(0,0,0,.35); opacity: 0;
+    pointer-events: none; transition: opacity .2s; }
+  #scrim.show { opacity: 1; pointer-events: auto; }
+  #sheet { position: fixed; z-index: 2000; left: 0; right: 0; bottom: 0; max-height: 80vh; overflow-y: auto;
+    background: var(--glass-strong); border-top: 1px solid var(--line); border-radius: 22px 22px 0 0;
+    padding: 8px calc(var(--safe-right) + 18px) calc(var(--safe-bottom) + 18px) calc(var(--safe-left) + 18px);
+    transform: translateY(105%); transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+  #sheet.open { transform: none; }
+  .grabber { width: 40px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.2); margin: 4px auto 12px; }
+  #sheet h3 { margin: 14px 0 10px; font-size: 13px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .07em; display: flex; align-items: center; gap: 8px; }
+  .bases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .base { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+  .base .thumb { width: 100%; aspect-ratio: 1; border-radius: 14px; background-size: cover; background-position: center;
+    background-color: #1b2333; border: 2px solid transparent; }
+  .base.on { color: var(--text); font-weight: 600; }
+  .base.on .thumb { border-color: var(--accent); }
+  .row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row .txt { flex: 1; }
+  .row .txt b { display: block; font-weight: 600; font-size: 15px; }
+  .row .txt small { color: var(--muted); font-size: 12.5px; }
+  .switch { position: relative; width: 46px; height: 28px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch span { position: absolute; inset: 0; border-radius: 14px; background: rgba(255,255,255,.15); transition: .2s; }
+  .switch span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px;
+    border-radius: 50%; background: #fff; transition: .2s; }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::after { transform: translateX(18px); }
+  .seg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .seg button { padding: 9px 4px; border-radius: 11px; background: rgba(255,255,255,.07); font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  .seg button.on { background: var(--accent); color: #0b1220; }
+  .live-opts { margin-top: 12px; display: grid; gap: 12px; }
+  .live-opts.disabled { opacity: .4; pointer-events: none; }
+  .field { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+  .field label { width: 72px; color: var(--muted); font-size: 13px; }
+  .field input[type=date] { flex: 1; background: rgba(255,255,255,.07); border: 1px solid var(--line);
+    color: var(--text); border-radius: 10px; padding: 8px 10px; font: inherit; color-scheme: dark; }
+  .field input[type=range] { flex: 1; accent-color: var(--accent); }
+  .daybtn { padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.07); display: grid; place-items: center; }
+  .note { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 10px 0 0; }
+
+  /* ---------- misc ---------- */
+  #offline { position: fixed; z-index: 1500; left: 50%; transform: translateX(-50%);
+    top: calc(var(--safe-top) + 70px); padding: 8px 14px; border-radius: 12px; background: rgba(120, 30, 30, .92);
+    font-size: 13px; white-space: nowrap; }
+  #toast { position: fixed; z-index: 3000; left: 50%; bottom: calc(var(--safe-bottom) + 120px);
+    transform: translate(-50%, 20px); opacity: 0; transition: .25s; pointer-events: none;
+    padding: 10px 16px; border-radius: 12px; background: rgba(10,14,22,.95); font-size: 14px; max-width: 86vw; text-align: center; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .me-dot { width: 20px; height: 20px; border-radius: 50%; background: #2196f3; border: 3px solid #fff;
+    box-shadow: 0 0 0 0 rgba(33,150,243,.6); animation: pulse 2s infinite; }
+  @keyframes pulse { 70% { box-shadow: 0 0 0 16px rgba(33,150,243,0); } 100% { box-shadow: 0 0 0 0 rgba(33,150,243,0); } }
+  .iss-icon { filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
+  .iss-icon svg { width: 44px; height: 44px; stroke: none; }
+  .pin-pop { font-size: 13px; min-width: 190px; }
+  .pin-pop b { font-size: 14px; font-variant-numeric: tabular-nums; }
+  .pin-pop .acts { display: flex; gap: 6px; margin-top: 10px; }
+  .pin-pop .acts button { flex: 1; padding: 7px 6px; border-radius: 9px; background: rgba(255,255,255,.08); font-size: 12px; font-weight: 600; color: var(--text); }
+
+  .leaflet-container { font: inherit; background: #0b1220; }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--glass-strong); color: var(--text); box-shadow: var(--shadow); }
+  .leaflet-popup-content-wrapper { border-radius: 14px; border: 1px solid var(--line); }
+  .leaflet-popup-close-button { color: var(--muted) !important; }
+  .leaflet-control-attribution { background: rgba(10,14,22,.65) !important; color: #aab6c8 !important;
+    font-size: 9.5px; border-radius: 8px 0 0 0; margin-bottom: var(--safe-bottom) !important; margin-right: var(--safe-right) !important; }
+  .leaflet-control-attribution a { color: #cfe6ff !important; }
+  .leaflet-control-scale { margin-left: calc(var(--safe-left) + 12px) !important; margin-bottom: calc(var(--safe-bottom) + 60px) !important; }
+  .leaflet-control-scale-line { background: rgba(10,14,22,.6); color: #dfe7f2; border-color: #dfe7f2; }
+  @media (min-width: 600px) { .bases { grid-template-columns: repeat(4, 110px); } #sheet { max-width: 560px; margin: 0 auto; } }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<!-- Search bar -->
+<div id="topbar">
+  <form class="search glass" id="searchForm" autocomplete="off">
+    <svg viewBox="0 0 24 24" style="color:var(--muted)"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" type="search" enterkeyhint="search" placeholder="Search places or lat, lng">
+    <button type="button" id="clearQ" class="icon-btn hidden" aria-label="Clear">
+      <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="live-pill" id="livePill"><i></i>LIVE</div>
+  </form>
+  <div id="results" class="results glass hidden"></div>
+</div>
+
+<div id="offline" class="hidden">⚠ No internet — map tiles can't load</div>
+
+<!-- Floating buttons -->
+<div id="fabs">
+  <button class="fab glass" id="btnLayers" aria-label="Map layers">
+    <svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg>
+  </button>
+  <button class="fab glass iss" id="btnIss" aria-label="Track the ISS">
+    <svg viewBox="0 0 24 24"><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M2 8h5v8H2zM17 8h5v8h-5zM7 12h2.5M14.5 12H17M12 9.5V6M10 4h4"/></svg>
+  </button>
+  <button class="fab glass" id="btnLocate" aria-label="My location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+  </button>
+</div>
+
+<!-- Coordinates of map centre -->
+<div id="status" class="glass"><span id="coords">—</span><span>·</span><b id="zoomLbl">z3</b></div>
+
+<!-- ISS info card -->
+<div id="issCard" class="glass hidden">
+  <div class="card-head">
+    <div class="iss-dot"><svg viewBox="0 0 24 24"><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M2 8h5v8H2zM17 8h5v8h-5zM7 12h2.5M14.5 12H17"/></svg></div>
+    <div class="title"><b>International Space Station</b><small id="issState">Connecting…</small></div>
+    <button class="icon-btn" id="issClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="stats">
+    <div class="stat"><small>Latitude</small><span id="issLat">—</span></div>
+    <div class="stat"><small>Longitude</small><span id="issLng">—</span></div>
+    <div class="stat"><small>Altitude</small><span id="issAlt">—</span></div>
+    <div class="stat"><small>Speed</small><span id="issSpd">—</span></div>
+  </div>
+  <div class="card-actions">
+    <button class="chip on" id="issFollow"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>Following</button>
+    <button class="chip" id="issShare"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>Share</button>
+  </div>
+</div>
+
+<!-- Layers bottom sheet -->
+<div id="scrim"></div>
+<div id="sheet" role="dialog" aria-label="Map layers">
+  <div class="grabber"></div>
+
+  <h3>Map style</h3>
+  <div class="bases" id="bases"></div>
+
+  <h3>Live satellite imagery <span class="live-pill"><i></i>NASA</span></h3>
+  <div class="seg" id="liveSeg"></div>
+  <div class="live-opts disabled" id="liveOpts">
+    <div class="field">
+      <label for="liveDate">Date (UTC)</label>
+      <button class="daybtn" id="dayPrev" aria-label="Previous day"><svg viewBox="0 0 24 24" style="width:18px;height:18px"><path d="m15 18-6-6 6-6"/></svg></button>
+      <input type="date" id="liveDate">
+      <button class="daybtn" id="dayNext" aria-label="Next day"><svg viewBox="0 0 24 24" style="width:18px;height:18px"><path d="m9 18 6-6-6-6"/></svg></button>
+    </div>
+    <div class="field">
+      <label for="liveOpacity">Opacity</label>
+      <input type="range" id="liveOpacity" min="0.2" max="1" step="0.05" value="1">
+    </div>
+  </div>
+  <p class="note">Whole-Earth photos taken by NASA satellites each day (about 250 m detail). Today's image fills in as the satellites pass over, so yesterday is usually the most complete.</p>
+
+  <h3>Overlays</h3>
+  <div class="row"><div class="txt"><b>Place names &amp; borders</b><small>Countries, cities and towns</small></div>
+    <label class="switch"><input type="checkbox" id="optLabels"><span></span></label></div>
+  <div class="row"><div class="txt"><b>Roads</b><small>Highways and streets</small></div>
+    <label class="switch"><input type="checkbox" id="optRoads"><span></span></label></div>
+  <div class="row"><div class="txt"><b>Day &amp; night</b><small>Live shadow of where it's night now</small></div>
+    <label class="switch"><input type="checkbox" id="optNight"><span></span></label></div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+  // Fallback CDN if unpkg is blocked or slow on this network.
+  if (!window.L) document.write('<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"><\/script>' +
+    '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">');
+</script>
+<script>
+(function () {
+  'use strict';
+
+  if (!window.L) {
+    document.body.innerHTML = '<div style="padding:40px 24px;text-align:center;color:#9aa8bc;font-family:sans-serif">' +
+      '<h2 style="color:#e8eef7">Couldn\'t load the map</h2><p>Check your internet connection, then reopen the app.</p></div>';
+    return;
+  }
+
+  const $ = (id) => document.getElementById(id);
+  const hasBridge = typeof window.Android !== 'undefined';
+  const RAD = Math.PI / 180, DEG = 180 / Math.PI;
+
+  // ------------------------------------------------------------ storage
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('lsm:' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('lsm:' + k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
+  };
+  const prefs = Object.assign({
+    base: 'satellite', labels: true, roads: false, night: true,
+    live: 'off', liveOpacity: 1, view: { lat: 20, lng: 10, z: 3 }
+  }, store.get('prefs', {}));
+  const savePrefs = () => store.set('prefs', prefs);
+
+  // ------------------------------------------------------------ helpers
+  function toast(msg, ms) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), ms || 2600);
+  }
+  const fmt = (n, d) => Number(n).toFixed(d == null ? 4 : d);
+  function fmtLatLng(lat, lng, d) {
+    d = d == null ? 4 : d;
+    return Math.abs(lat).toFixed(d) + '°' + (lat >= 0 ? 'N' : 'S') + ', ' +
+           Math.abs(lng).toFixed(d) + '°' + (lng >= 0 ? 'E' : 'W');
+  }
+  const wrapLng = (lng) => ((lng + 540) % 360) - 180;
+  function share(text) {
+    if (hasBridge) return Android.share(text);
+    if (navigator.share) return navigator.share({ text }).catch(() => {});
+    copy(text);
+  }
+  function copy(text) {
+    if (hasBridge) return Android.copy(text);
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast('Copied'), () => toast(text, 5000));
+    else toast(text, 5000);
+  }
+  function utcDate(offsetDays) {
+    const d = new Date(Date.now() + (offsetDays || 0) * 864e5);
+    return d.toISOString().slice(0, 10);
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // Called by the Android app with system-bar sizes (dp).
+  window.setSafeArea = function (top, right, bottom, left) {
+    const s = document.documentElement.style;
+    s.setProperty('--safe-top', top + 'px'); s.setProperty('--safe-right', right + 'px');
+    s.setProperty('--safe-bottom', bottom + 'px'); s.setProperty('--safe-left', left + 'px');
+  };
+
+  // ------------------------------------------------------------ map
+  const map = L.map('map', {
+    zoomControl: false, worldCopyJump: true, minZoom: 2, maxZoom: 20,
+    maxBounds: [[-89.9, -100000], [89.9, 100000]], maxBoundsViscosity: 1,
+    zoomSnap: 0.25, wheelPxPerZoomLevel: 90, tapHold: true
+  }).setView([prefs.view.lat, prefs.view.lng], prefs.view.z);
+  map.attributionControl.setPrefix(false);
+  L.control.scale({ position: 'bottomleft', imperial: false, maxWidth: 110 }).addTo(map);
+
+  map.createPane('livePane').style.zIndex = 300;
+  const labelPane = map.createPane('labelPane');
+  labelPane.style.zIndex = 350; labelPane.style.pointerEvents = 'none';
+  map.createPane('nightPane').style.zIndex = 380;
+  map.getPane('nightPane').style.pointerEvents = 'none';
+
+  const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
+  const ESRI_ATTR = 'Imagery &copy; Esri, Maxar, Earthstar Geographics';
+  const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+  const BASES = {
+    satellite: {
+      name: 'Satellite',
+      thumb: ESRI + 'World_Imagery/MapServer/tile/3/3/5',
+      make: () => L.tileLayer(ESRI + 'World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 20, maxNativeZoom: 19, attribution: ESRI_ATTR })
+    },
+    streets: {
+      name: 'Streets',
+      thumb: 'https://tile.openstreetmap.org/3/4/3.png',
+      make: () => L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        { maxZoom: 20, maxNativeZoom: 19, attribution: OSM_ATTR })
+    },
+    terrain: {
+      name: 'Terrain',
+      thumb: ESRI + 'World_Topo_Map/MapServer/tile/3/3/5',
+      make: () => L.tileLayer(ESRI + 'World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 20, maxNativeZoom: 19, attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, USGS, NGA' })
+    },
+    dark: {
+      name: 'Dark',
+      thumb: 'https://a.basemaps.cartocdn.com/dark_all/3/4/3.png',
+      make: () => L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        { subdomains: 'abcd', maxZoom: 20, attribution: OSM_ATTR + ' &copy; <a href="https://carto.com/attributions">CARTO</a>' })
+    }
+  };
+
+  const labelsLayer = L.tileLayer(ESRI + 'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    { pane: 'labelPane', maxZoom: 20, maxNativeZoom: 19 });
+  const roadsLayer = L.tileLayer(ESRI + 'Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+    { pane: 'labelPane', maxZoom: 20, maxNativeZoom: 19 });
+
+  let baseLayer = null;
+  function setBase(key) {
+    if (!BASES[key]) key = 'satellite';
+    if (baseLayer) map.removeLayer(baseLayer);
+    baseLayer = BASES[key].make().addTo(map);
+    prefs.base = key; savePrefs();
+    document.querySelectorAll('.base').forEach((b) => b.classList.toggle('on', b.dataset.key === key));
+    syncLabelLayers();
+  }
+  function syncLabelLayers() {
+    // Street/dark maps already include their own labels.
+    const imagery = prefs.base === 'satellite' || prefs.live !== 'off';
+    toggleLayer(labelsLayer, prefs.labels && imagery);
+    toggleLayer(roadsLayer, prefs.roads && (imagery || prefs.base === 'terrain'));
+  }
+  function toggleLayer(layer, on) {
+    if (on && !map.hasLayer(layer)) layer.addTo(map);
+    if (!on && map.hasLayer(layer)) map.removeLayer(layer);
+  }
+
+  // ------------------------------------------------------------ NASA GIBS daily imagery
+  const LIVE = {
+    off: { name: 'Off' },
+    terra: { name: 'Terra', id: 'MODIS_Terra_CorrectedReflectance_TrueColor', since: '2000-02-24' },
+    aqua: { name: 'Aqua', id: 'MODIS_Aqua_CorrectedReflectance_TrueColor', since: '2002-07-04' },
+    snpp: { name: 'Suomi', id: 'VIIRS_SNPP_CorrectedReflectance_TrueColor', since: '2015-11-24' },
+    noaa20: { name: 'NOAA-20', id: 'VIIRS_NOAA20_CorrectedReflectance_TrueColor', since: '2018-01-01' }
+  };
+  let liveLayer = null;
+  let liveDate = utcDate(-1);
+  const dateInput = $('liveDate');
+  dateInput.max = utcDate(0);
+
+  function setLive(key) {
+    if (!LIVE[key]) key = 'off';
+    if (liveLayer) { map.removeLayer(liveLayer); liveLayer = null; }
+    prefs.live = key; savePrefs();
+    const src = LIVE[key];
+    if (src.id) {
+      if (liveDate < src.since) liveDate = src.since;
+      dateInput.min = src.since;
+      liveLayer = L.tileLayer(
+        'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/' + src.id +
+        '/default/' + liveDate + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
+        { pane: 'livePane', maxNativeZoom: 9, maxZoom: 20, opacity: prefs.liveOpacity, attribution: 'NASA EOSDIS GIBS / Worldview' }
+      ).addTo(map);
+    }
+    dateInput.value = liveDate;
+    $('liveOpts').classList.toggle('disabled', !src.id);
+    document.querySelectorAll('#liveSeg button').forEach((b) => b.classList.toggle('on', b.dataset.key === key));
+    $('livePill').classList.toggle('hidden', !(src.id || iss.on));
+    syncLabelLayers();
+  }
+  function changeDay(delta) {
+    const d = new Date(liveDate + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + delta);
+    const next = d.toISOString().slice(0, 10);
+    if (next > dateInput.max || next < dateInput.min) return;
+    liveDate = next; setLive(prefs.live);
+  }
+
+  // ------------------------------------------------------------ day / night terminator
+  const night = { layer: null, timer: null };
+  function terminatorLatLngs(date) {
+    const jd = date.getTime() / 864e5 + 2440587.5;
+    const n = jd - 2451545.0;
+    const gst = (18.697374558 + 24.06570982441908 * n) % 24;
+    const L0 = (280.460 + 0.9856474 * n) % 360;
+    const g = (357.528 + 0.9856003 * n) % 360;
+    const lambda = L0 + 1.915 * Math.sin(g * RAD) + 0.02 * Math.sin(2 * g * RAD);
+    const T = n / 36525;
+    const obliq = 23.43929111 - T * (46.836769 / 3600 - T * (0.0001831 / 3600 + T * (0.0020034 / 3600 - T * (0.576e-6 / 3600 - T * 4.34e-8 / 3600))));
+    let alpha = Math.atan(Math.cos(obliq * RAD) * Math.tan(lambda * RAD)) * DEG;
+    const delta = Math.asin(Math.sin(obliq * RAD) * Math.sin(lambda * RAD)) * DEG;
+    alpha += Math.floor(lambda / 90) * 90 - Math.floor(alpha / 90) * 90;
+
+    const pts = [];
+    for (let lng = -540; lng <= 540; lng += 1) {
+      const ha = (gst + lng / 15) * 15 - alpha;
+      const lat = Math.atan(-Math.cos(ha * RAD) / Math.tan(delta * RAD)) * DEG;
+      pts.push([lat, lng]);
+    }
+    const pole = delta < 0 ? 90 : -90;
+    pts.unshift([pole, -540]); pts.push([pole, 540]);
+    return pts;
+  }
+  function drawNight() {
+    const pts = terminatorLatLngs(new Date());
+    if (night.layer) night.layer.setLatLngs(pts);
+    else night.layer = L.polygon(pts, { pane: 'nightPane', stroke: false, fillColor: '#00040f', fillOpacity: 0.38, interactive: false }).addTo(map);
+  }
+  function setNight(on) {
+    prefs.night = on; savePrefs();
+    clearInterval(night.timer);
+    if (on) { drawNight(); night.timer = setInterval(drawNight, 60000); }
+    else if (night.layer) { map.removeLayer(night.layer); night.layer = null; }
+  }
+
+  // ------------------------------------------------------------ ISS live tracker
+  const ISS_API = 'https://api.wheretheiss.at/v1/satellites/25544';
+  const iss = { on: false, follow: true, timer: null, orbitTimer: null, marker: null, footprint: null,
+    past: null, future: null, trail: [], last: null, firstFix: true };
+  const issIcon = L.divIcon({
+    className: 'iss-icon', iconSize: [44, 44], iconAnchor: [22, 22],
+    html: '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="rgba(255,213,79,.18)"/>' +
+      '<rect x="4" y="17" width="11" height="14" rx="1.5" fill="#4fc3f7" stroke="#0b1220" stroke-width="1.5"/>' +
+      '<rect x="33" y="17" width="11" height="14" rx="1.5" fill="#4fc3f7" stroke="#0b1220" stroke-width="1.5"/>' +
+      '<rect x="15" y="22.5" width="18" height="3" fill="#e0e0e0"/>' +
+      '<rect x="19" y="18" width="10" height="12" rx="2" fill="#fff" stroke="#0b1220" stroke-width="1.5"/>' +
+      '<circle cx="24" cy="24" r="2.3" fill="#ffd54f"/></svg>'
+  });
+
+  function splitAtDateline(points) {
+    const segs = []; let cur = [];
+    points.forEach((p, i) => {
+      if (i && Math.abs(p[1] - points[i - 1][1]) > 180) { segs.push(cur); cur = []; }
+      cur.push(p);
+    });
+    if (cur.length) segs.push(cur);
+    return segs.filter((s) => s.length > 1);
+  }
+  function footprintMeters(altKm) {
+    const R = 6371;
+    return R * Math.acos(R / (R + altKm)) * 1000;
+  }
+
+  async function pollIss() {
+    try {
+      const r = await fetch(ISS_API, { cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      updateIss(await r.json());
+    } catch (e) {
+      $('issState').textContent = 'Connection problem — retrying…';
+    }
+  }
+
+  async function refreshOrbit() {
+    const now = Math.floor(Date.now() / 1000);
+    const past = [], future = [];
+    for (let i = 10; i >= 1; i--) past.push(now - i * 270);      // last 45 min
+    for (let i = 1; i <= 10; i++) future.push(now + i * 300);     // next 50 min
+    try {
+      const get = (ts) => fetch(ISS_API + '/positions?units=kilometers&timestamps=' + ts.join(','), { cache: 'no-store' })
+        .then((r) => r.ok ? r.json() : []);
+      const [p, f] = await Promise.all([get(past), get(future)]);
+      if (!iss.on) return;
+      const toPts = (arr) => arr.map((d) => [d.latitude, d.longitude]);
+      iss.trail = toPts(p).concat(iss.trail.filter((pt) => pt[2] && pt[2] > now - 60).map((pt) => [pt[0], pt[1]]));
+      drawOrbit(toPts(f));
+    } catch (e) { /* the live position still works without the orbit lines */ }
+  }
+
+  function drawOrbit(futurePts) {
+    const pastPts = iss.trail.map((p) => [p[0], p[1]]);
+    if (iss.last) pastPts.push([iss.last.latitude, iss.last.longitude]);
+    const pastSegs = splitAtDateline(pastPts);
+    if (iss.past) iss.past.setLatLngs(pastSegs);
+    else iss.past = L.polyline(pastSegs, { color: '#ffd54f', weight: 3, opacity: 0.9, interactive: false }).addTo(map);
+    if (futurePts) {
+      const start = iss.last ? [[iss.last.latitude, iss.last.longitude]] : [];
+      const futSegs = splitAtDateline(start.concat(futurePts));
+      if (iss.future) iss.future.setLatLngs(futSegs);
+      else iss.future = L.polyline(futSegs, { color: '#ffd54f', weight: 2, opacity: 0.7, dashArray: '6 8', interactive: false }).addTo(map);
+    }
+  }
+
+  function updateIss(d) {
+    if (!iss.on) return;
+    iss.last = d;
+    const ll = [d.latitude, d.longitude];
+    if (!iss.marker) {
+      iss.marker = L.marker(ll, { icon: issIcon, zIndexOffset: 1000, keyboard: false }).addTo(map)
+        .on('click', () => { $('issCard').classList.remove('hidden'); setFollow(true); });
+      iss.footprint = L.circle(ll, { radius: footprintMeters(d.altitude), color: '#ffd54f', weight: 1,
+        opacity: 0.6, fillColor: '#ffd54f', fillOpacity: 0.06, interactive: false }).addTo(map);
+    } else {
+      iss.marker.setLatLng(ll);
+      iss.footprint.setLatLng(ll).setRadius(footprintMeters(d.altitude));
+    }
+    iss.trail.push([d.latitude, d.longitude, Math.floor(Date.now() / 1000)]);
+    if (iss.trail.length > 1200) iss.trail.shift();
+    drawOrbit(null);
+
+    $('issLat').textContent = fmt(d.latitude, 3) + '°';
+    $('issLng').textContent = fmt(d.longitude, 3) + '°';
+    $('issAlt').textContent = Math.round(d.altitude) + ' km';
+    $('issSpd').textContent = Math.round(d.velocity).toLocaleString() + ' km/h';
+    $('issState').textContent = (d.visibility === 'daylight' ? '☀ In sunlight' : '🌙 In Earth\'s shadow') +
+      ' · updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    if (iss.firstFix) {
+      iss.firstFix = false;
+      map.flyTo(ll, Math.min(map.getZoom(), 3), { duration: 1.2 });
+    } else if (iss.follow) {
+      const c = map.getCenter();
+      // Crossing the date line: jump to the identical-looking copy of the world instead of panning across it.
+      if (Math.abs(c.lng - d.longitude) > 180) map.setView(ll, map.getZoom(), { animate: false });
+      else map.panTo(ll, { animate: true, duration: 1 });
+    }
+  }
+
+  function setFollow(on) {
+    iss.follow = on;
+    const b = $('issFollow');
+    b.classList.toggle('on', on);
+    b.lastChild.textContent = on ? 'Following' : 'Follow';
+  }
+
+  function startIss() {
+    iss.on = true; iss.firstFix = true; iss.trail = [];
+    $('btnIss').classList.add('on');
+    $('issCard').classList.remove('hidden');
+    $('livePill').classList.remove('hidden');
+    setFollow(true);
+    pollIss(); refreshOrbit();
+    iss.timer = setInterval(pollIss, 3000);
+    iss.orbitTimer = setInterval(refreshOrbit, 4 * 60000);
+  }
+  function stopIss() {
+    iss.on = false;
+    clearInterval(iss.timer); clearInterval(iss.orbitTimer);
+    ['marker', 'footprint', 'past', 'future'].forEach((k) => { if (iss[k]) { map.removeLayer(iss[k]); iss[k] = null; } });
+    $('btnIss').classList.remove('on');
+    $('issCard').classList.add('hidden');
+    $('livePill').classList.toggle('hidden', prefs.live === 'off');
+  }
+
+  // ------------------------------------------------------------ my location
+  const me = { on: false, marker: null, circle: null, first: true, latlng: null, watch: null };
+  const meIcon = L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [20, 20], iconAnchor: [10, 10] });
+
+  function startLocate() {
+    me.on = true; me.first = true;
+    $('btnLocate').classList.add('on');
+    toast('Finding your location…', 1800);
+    if (hasBridge) {
+      Android.startLocation();
+    } else if (navigator.geolocation) {
+      me.watch = navigator.geolocation.watchPosition(
+        (p) => window.onNativeLocation(p.coords.latitude, p.coords.longitude, p.coords.accuracy, p.coords.heading),
+        (e) => window.onNativeLocationError(e.message || 'Location unavailable'),
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+    } else {
+      window.onNativeLocationError('Location is not supported on this device');
+    }
+  }
+  function stopLocate() {
+    me.on = false;
+    $('btnLocate').classList.remove('on');
+    if (hasBridge) Android.stopLocation();
+    else if (me.watch != null) navigator.geolocation.clearWatch(me.watch);
+    me.watch = null;
+    if (me.marker) { map.removeLayer(me.marker); map.removeLayer(me.circle); me.marker = me.circle = null; }
+  }
+  window.onNativeLocation = function (lat, lng, acc) {
+    if (!me.on) return;
+    me.latlng = L.latLng(lat, lng);
+    if (!me.marker) {
+      me.circle = L.circle(me.latlng, { radius: acc, color: '#2196f3', weight: 1, fillOpacity: 0.12, interactive: false }).addTo(map);
+      me.marker = L.marker(me.latlng, { icon: meIcon, zIndexOffset: 900 }).addTo(map)
+        .on('click', () => openPin(me.latlng, 'You are here'));
+    } else {
+      me.marker.setLatLng(me.latlng); me.circle.setLatLng(me.latlng).setRadius(acc);
+    }
+    if (me.first) {
+      me.first = false;
+      if (iss.on) setFollow(false);
+      map.flyTo(me.latlng, Math.max(map.getZoom(), 16), { duration: 1.4 });
+    }
+  };
+  window.onNativeLocationError = function (msg) {
+    toast(msg, 3500);
+    if (me.on && !me.marker) { me.on = false; $('btnLocate').classList.remove('on'); }
+  };
+
+  // ------------------------------------------------------------ dropped pin
+  let pin = null;
+  function openPin(latlng, title) {
+    const lat = latlng.lat, lng = wrapLng(latlng.lng);
+    const coordText = fmt(lat, 6) + ', ' + fmt(lng, 6);
+    if (pin) map.removeLayer(pin);
+    const html = '<div class="pin-pop">' + (title ? '<div style="color:var(--muted);margin-bottom:2px">' + escapeHtml(title) + '</div>' : '') +
+      '<b>' + fmtLatLng(lat, lng, 5) + '</b>' +
+      '<div class="acts"><button data-a="copy">Copy</button><button data-a="share">Share</button><button data-a="nav">Directions</button></div></div>';
+    pin = L.popup({ closeButton: true, autoPanPadding: [40, 120] }).setLatLng(latlng).setContent(html).openOn(map);
+    const el = pin.getElement();
+    el.querySelector('[data-a=copy]').onclick = () => copy(coordText);
+    el.querySelector('[data-a=share]').onclick = () =>
+      share((title ? title + '\n' : '') + coordText + '\nhttps://www.openstreetmap.org/?mlat=' + fmt(lat, 6) + '&mlon=' + fmt(lng, 6) + '#map=16/' + fmt(lat, 5) + '/' + fmt(lng, 5));
+    el.querySelector('[data-a=nav]').onclick = () => {
+      const url = 'https://www.google.com/maps/dir/?api=1&destination=' + fmt(lat, 6) + ',' + fmt(lng, 6);
+      if (hasBridge) Android.openUrl(url); else window.open(url, '_blank');
+    };
+  }
+  map.on('contextmenu', (e) => openPin(e.latlng, 'Dropped pin'));
+
+  // ------------------------------------------------------------ search (OpenStreetMap Nominatim)
+  const q = $('q'), results = $('results');
+  const coordRe = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
+  let searchCtl = null;
+
+  function showResults(html) { results.innerHTML = html; results.classList.remove('hidden'); }
+  function hideResults() { results.classList.add('hidden'); }
+
+  $('searchForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = q.value.trim();
+    if (!text) return;
+    q.blur();
+    const m = text.match(coordRe);
+    if (m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180) {
+      hideResults();
+      const ll = L.latLng(+m[1], +m[2]);
+      map.flyTo(ll, 15); setTimeout(() => openPin(ll, 'Coordinates'), 900);
+      return;
+    }
+    if (searchCtl) searchCtl.abort();
+    searchCtl = new AbortController();
+    showResults('<div class="result empty">Searching…</div>');
+    try {
+      const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&addressdetails=0&q=' + encodeURIComponent(text);
+      const r = await fetch(url, { signal: searchCtl.signal, headers: { 'Accept-Language': navigator.language || 'en' } });
+      const list = await r.json();
+      if (!list.length) return showResults('<div class="result empty">No places found</div>');
+      showResults(list.map((p, i) => {
+        const parts = p.display_name.split(', ');
+        return '<button class="result" data-i="' + i + '"><svg viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="10" r="2.5"/></svg>' +
+          '<span><b>' + escapeHtml(parts[0]) + '</b><small>' + escapeHtml(parts.slice(1).join(', ')) + '</small></span></button>';
+      }).join(''));
+      results.querySelectorAll('.result').forEach((btn) => btn.onclick = () => {
+        const p = list[+btn.dataset.i];
+        hideResults();
+        q.value = p.display_name.split(', ')[0];
+        const ll = L.latLng(+p.lat, +p.lon);
+        if (iss.on) setFollow(false);
+        if (p.boundingbox) {
+          const b = p.boundingbox.map(Number);
+          map.flyToBounds([[b[0], b[2]], [b[1], b[3]]], { maxZoom: 17, padding: [30, 30], duration: 1.4 });
+        } else map.flyTo(ll, 15);
+        setTimeout(() => openPin(ll, p.display_name.split(', ')[0]), 1500);
+      });
+    } catch (err) {
+      if (err.name !== 'AbortError') showResults('<div class="result empty">Search failed — check your connection</div>');
+    }
+  });
+  q.addEventListener('input', () => { $('clearQ').classList.toggle('hidden', !q.value); if (!q.value) hideResults(); });
+  $('clearQ').onclick = () => { q.value = ''; $('clearQ').classList.add('hidden'); hideResults(); q.focus(); };
+  map.on('click', () => { hideResults(); q.blur(); });
+
+  // ------------------------------------------------------------ status chip
+  function updateStatus() {
+    const c = map.getCenter();
+    $('coords').textContent = fmtLatLng(c.lat, wrapLng(c.lng), 4);
+    $('zoomLbl').textContent = 'z' + Math.round(map.getZoom());
+  }
+  map.on('move', updateStatus);
+  map.on('moveend', () => {
+    const c = map.getCenter();
+    prefs.view = { lat: +c.lat.toFixed(5), lng: +wrapLng(c.lng).toFixed(5), z: map.getZoom() }; savePrefs();
+  });
+  map.on('dragstart', () => { if (iss.on && iss.follow) setFollow(false); });
+  $('status').onclick = () => { const c = map.getCenter(); copy(fmt(c.lat, 6) + ', ' + fmt(wrapLng(c.lng), 6)); };
+
+  // ------------------------------------------------------------ layer sheet
+  function openSheet() { $('sheet').classList.add('open'); $('scrim').classList.add('show'); hideResults(); }
+  function closeSheet() { $('sheet').classList.remove('open'); $('scrim').classList.remove('show'); }
+  $('scrim').onclick = closeSheet;
+
+  $('bases').innerHTML = Object.keys(BASES).map((k) =>
+    '<button class="base" data-key="' + k + '"><div class="thumb" style="background-image:url(\'' + BASES[k].thumb + '\')"></div>' + BASES[k].name + '</button>').join('');
+  document.querySelectorAll('.base').forEach((b) => b.onclick = () => setBase(b.dataset.key));
+
+  $('liveSeg').innerHTML = Object.keys(LIVE).map((k) => '<button data-key="' + k + '">' + LIVE[k].name + '</button>').join('');
+  document.querySelectorAll('#liveSeg button').forEach((b) => b.onclick = () => {
+    setLive(b.dataset.key);
+    if (b.dataset.key !== 'off' && map.getZoom() > 9) {
+      map.flyTo(map.getCenter(), 6);
+      toast('Zoomed out — daily NASA imagery is sharpest at country scale');
+    }
+  });
+  dateInput.addEventListener('change', () => { if (dateInput.value) { liveDate = dateInput.value; setLive(prefs.live); } });
+  $('dayPrev').onclick = () => changeDay(-1);
+  $('dayNext').onclick = () => changeDay(1);
+  $('liveOpacity').value = prefs.liveOpacity;
+  $('liveOpacity').addEventListener('input', (e) => {
+    prefs.liveOpacity = +e.target.value; savePrefs();
+    if (liveLayer) liveLayer.setOpacity(prefs.liveOpacity);
+  });
+
+  $('optLabels').checked = prefs.labels;
+  $('optRoads').checked = prefs.roads;
+  $('optNight').checked = prefs.night;
+  $('optLabels').onchange = (e) => { prefs.labels = e.target.checked; savePrefs(); syncLabelLayers(); };
+  $('optRoads').onchange = (e) => { prefs.roads = e.target.checked; savePrefs(); syncLabelLayers(); };
+  $('optNight').onchange = (e) => setNight(e.target.checked);
+
+  // ------------------------------------------------------------ buttons
+  $('btnLayers').onclick = openSheet;
+  $('btnIss').onclick = () => iss.on ? stopIss() : startIss();
+  $('issClose').onclick = () => $('issCard').classList.add('hidden');
+  $('issFollow').onclick = () => {
+    setFollow(!iss.follow);
+    if (iss.follow && iss.last) map.flyTo([iss.last.latitude, iss.last.longitude], Math.min(map.getZoom(), 4));
+  };
+  $('issShare').onclick = () => {
+    if (!iss.last) return;
+    share('The International Space Station is over ' + fmtLatLng(iss.last.latitude, iss.last.longitude, 2) +
+      ' at ' + Math.round(iss.last.altitude) + ' km, moving ' + Math.round(iss.last.velocity).toLocaleString() + ' km/h.');
+  };
+  $('btnLocate').onclick = () => {
+    if (!me.on) return startLocate();
+    if (me.latlng && map.getCenter().distanceTo(me.latlng) > 30) {
+      if (iss.on) setFollow(false);
+      return map.flyTo(me.latlng, Math.max(map.getZoom(), 16));
+    }
+    stopLocate();
+  };
+
+  // Android back button: close the top-most panel first.
+  window.handleBack = function () {
+    if ($('sheet').classList.contains('open')) { closeSheet(); return true; }
+    if (!results.classList.contains('hidden')) { hideResults(); return true; }
+    if (map._popup && map.hasLayer(map._popup)) { map.closePopup(); return true; }
+    if (!$('issCard').classList.contains('hidden')) { $('issCard').classList.add('hidden'); return true; }
+    return false;
+  };
+
+  // ------------------------------------------------------------ connectivity
+  const setOffline = () => $('offline').classList.toggle('hidden', navigator.onLine);
+  window.addEventListener('online', () => { setOffline(); map.eachLayer((l) => l.redraw && l.redraw()); });
+  window.addEventListener('offline', setOffline);
+  setOffline();
+
+  // ------------------------------------------------------------ start
+  setBase(prefs.base);
+  setLive(prefs.live);
+  setNight(prefs.night);
+  updateStatus();
+})();
+</script>
+</body>
+</html>
