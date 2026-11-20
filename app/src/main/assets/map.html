@@ -167,6 +167,40 @@
   .leaflet-control-scale { margin-left: calc(var(--safe-left) + 12px) !important; margin-bottom: calc(var(--safe-bottom) + 60px) !important; }
   .leaflet-control-scale-line { background: rgba(10,14,22,.6); color: #dfe7f2; border-color: #dfe7f2; }
   @media (min-width: 600px) { .bases { grid-template-columns: repeat(4, 110px); } #sheet { max-width: 560px; margin: 0 auto; } }
+
+  /* ---------- directions / live traffic ---------- */
+  #routeCard { position: fixed; z-index: 960; left: calc(var(--safe-left) + 12px); right: calc(var(--safe-right) + 12px);
+    bottom: calc(var(--safe-bottom) + 12px); border-radius: var(--radius); padding: 12px 14px; max-height: 44vh; overflow-y: auto; }
+  @media (min-width: 600px) { #routeCard { right: auto; width: 440px; } }
+  .rc-head { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+  .rc-main { flex: 1; min-width: 0; }
+  .rc-eta b { font-size: 24px; font-weight: 700; color: #7ee787; }
+  .rc-eta span { color: var(--muted); font-size: 13px; margin-left: 8px; }
+  .rc-main small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rc-traffic { margin-top: 10px; padding: 8px 10px; border-radius: 10px; font-size: 13px; font-weight: 600; }
+  .rc-traffic.ok { background: rgba(102,187,106,.15); color: #9be7a0; }
+  .rc-traffic.warn { background: rgba(251,140,0,.16); color: #ffc477; }
+  .rc-traffic.bad { background: rgba(229,57,53,.18); color: #ff9e9b; }
+  #routeCard .card-actions { margin-top: 10px; }
+  #rcLive.on { background: rgba(255,107,107,.2); color: #ff9b9b; }
+  .rc-list { margin-top: 10px; }
+  .rc-list h4 { margin: 4px 0 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  .rc-item { display: flex; gap: 10px; width: 100%; text-align: left; padding: 9px 2px; border-top: 1px solid var(--line); align-items: flex-start; }
+  .rc-item b { display: block; font-size: 14px; font-weight: 600; }
+  .rc-item small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.35; }
+  .rc-ico { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: rgba(255,255,255,.07); flex: none; font-size: 15px; }
+  .rc-empty { color: var(--muted); font-size: 13px; padding: 6px 0; }
+  .rc-upd { display: block; margin-top: 8px; color: var(--muted); font-size: 11.5px; }
+  .rt-pin { width: 30px; height: 30px; border-radius: 50%; border: 3px solid #fff; display: grid; place-items: center; font-size: 13px; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+  .inc-ico { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; background: #fff; border: 3px solid #fb8c00; box-shadow: 0 2px 8px rgba(0,0,0,.45); }
+  .inc-ico.m0 { border-color: #9e9e9e; } .inc-ico.m1 { border-color: #fdd835; } .inc-ico.m3, .inc-ico.m4 { border-color: #e53935; }
+  .inc-pop b { font-size: 14px; } .inc-pop small { display: block; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+  .fab.on.traffic { background: #66bb6a; }
+  body.routing #fabs { bottom: calc(var(--safe-bottom) + var(--card-h, 220px) + 24px); }
+  body.routing #status, body.routing .leaflet-control-scale { display: none; }
+  .keyrow input { flex: 1; min-width: 0; background: rgba(255,255,255,.07); border: 1px solid var(--line); color: var(--text);
+    border-radius: 10px; padding: 9px 10px; font: inherit; font-size: 14px; -webkit-user-select: text; user-select: text; }
+  .keyrow .chip { flex: none; padding: 9px 18px; background: var(--accent); color: #0b1220; }
 </style>
 </head>
 <body>
@@ -194,6 +228,9 @@
   </button>
   <button class="fab glass iss" id="btnIss" aria-label="Track the ISS">
     <svg viewBox="0 0 24 24"><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M2 8h5v8H2zM17 8h5v8h-5zM7 12h2.5M14.5 12H17M12 9.5V6M10 4h4"/></svg>
+  </button>
+  <button class="fab glass traffic" id="btnTraffic" aria-label="Live traffic">
+    <svg viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="20" rx="3"/><circle cx="12" cy="7" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="17" r="1.4"/></svg>
   </button>
   <button class="fab glass" id="btnLocate" aria-label="My location">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
@@ -253,6 +290,32 @@
     <label class="switch"><input type="checkbox" id="optRoads"><span></span></label></div>
   <div class="row"><div class="txt"><b>Day &amp; night</b><small>Live shadow of where it's night now</small></div>
     <label class="switch"><input type="checkbox" id="optNight"><span></span></label></div>
+  <div class="row"><div class="txt"><b>Live traffic &amp; incidents</b><small>Road speeds, accidents, closures, roadworks</small></div>
+    <label class="switch"><input type="checkbox" id="optTraffic"><span></span></label></div>
+
+  <h3>Traffic service (TomTom)</h3>
+  <div class="field keyrow"><input id="ttKey" type="text" placeholder="Paste your TomTom API key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"><button class="chip" id="ttSave">Save</button></div>
+  <p class="note" id="ttStatus"></p>
+</div>
+
+<!-- Directions with live traffic -->
+<div id="routeCard" class="glass hidden">
+  <div class="rc-head" id="rcHead">
+    <div class="rc-main">
+      <div class="rc-eta"><b id="rcTime">…</b><span id="rcDist"></span></div>
+      <small id="rcSub">Getting route…</small>
+    </div>
+    <button class="icon-btn" id="rcClose" aria-label="Close route"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="rc-traffic ok hidden" id="rcTraffic"></div>
+  <div class="card-actions">
+    <button class="chip" id="rcLive"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8"/></svg>Start live</button>
+    <button class="chip" id="rcSteps"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Steps</button>
+    <button class="chip" id="rcGmaps"><svg viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>Google</button>
+  </div>
+  <div class="rc-list" id="rcList"></div>
+  <div class="rc-list hidden" id="rcStepList"></div>
+  <small class="rc-upd" id="rcUpdated"></small>
 </div>
 
 <div id="toast"></div>
@@ -284,7 +347,7 @@
   };
   const prefs = Object.assign({
     base: 'satellite', labels: true, roads: false, night: true,
-    live: 'off', liveOpacity: 1, view: { lat: 20, lng: 10, z: 3 }
+    live: 'off', liveOpacity: 1, traffic: false, view: { lat: 20, lng: 10, z: 3 }
   }, store.get('prefs', {}));
   const savePrefs = () => store.set('prefs', prefs);
 
@@ -603,13 +666,13 @@
   }
 
   // ------------------------------------------------------------ my location
-  const me = { on: false, marker: null, circle: null, first: true, latlng: null, watch: null };
+  const me = { on: false, marker: null, circle: null, first: true, latlng: null, watch: null, waiters: [], fixTime: 0 };
   const meIcon = L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [20, 20], iconAnchor: [10, 10] });
 
-  function startLocate() {
-    me.on = true; me.first = true;
+  function startLocate(quiet) {
+    me.on = true; me.first = !quiet;
     $('btnLocate').classList.add('on');
-    toast('Finding your location…', 1800);
+    if (!quiet) toast('Finding your location…', 1800);
     if (hasBridge) {
       Android.startLocation();
     } else if (navigator.geolocation) {
@@ -644,9 +707,13 @@
       if (iss.on) setFollow(false);
       map.flyTo(me.latlng, Math.max(map.getZoom(), 16), { duration: 1.4 });
     }
+    me.fixTime = Date.now();
+    me.waiters.splice(0).forEach((f) => f(me.latlng));
+    onRouteLocation(me.latlng);
   };
   window.onNativeLocationError = function (msg) {
     toast(msg, 3500);
+    me.waiters.splice(0).forEach((f) => f(null));
     if (me.on && !me.marker) { me.on = false; $('btnLocate').classList.remove('on'); }
   };
 
@@ -658,16 +725,13 @@
     if (pin) map.removeLayer(pin);
     const html = '<div class="pin-pop">' + (title ? '<div style="color:var(--muted);margin-bottom:2px">' + escapeHtml(title) + '</div>' : '') +
       '<b>' + fmtLatLng(lat, lng, 5) + '</b>' +
-      '<div class="acts"><button data-a="copy">Copy</button><button data-a="share">Share</button><button data-a="nav">Directions</button></div></div>';
+      '<div class="acts"><button data-a="copy">Copy</button><button data-a="share">Share</button><button data-a="nav">Route</button></div></div>';
     pin = L.popup({ closeButton: true, autoPanPadding: [40, 120] }).setLatLng(latlng).setContent(html).openOn(map);
     const el = pin.getElement();
     el.querySelector('[data-a=copy]').onclick = () => copy(coordText);
     el.querySelector('[data-a=share]').onclick = () =>
       share((title ? title + '\n' : '') + coordText + '\nhttps://www.openstreetmap.org/?mlat=' + fmt(lat, 6) + '&mlon=' + fmt(lng, 6) + '#map=16/' + fmt(lat, 5) + '/' + fmt(lng, 5));
-    el.querySelector('[data-a=nav]').onclick = () => {
-      const url = 'https://www.google.com/maps/dir/?api=1&destination=' + fmt(lat, 6) + ',' + fmt(lng, 6);
-      if (hasBridge) Android.openUrl(url); else window.open(url, '_blank');
-    };
+    el.querySelector('[data-a=nav]').onclick = () => startDirections(L.latLng(lat, lng), title || 'Dropped pin');
   }
   map.on('contextmenu', (e) => openPin(e.latlng, 'Dropped pin'));
 
@@ -735,7 +799,7 @@
     const c = map.getCenter();
     prefs.view = { lat: +c.lat.toFixed(5), lng: +wrapLng(c.lng).toFixed(5), z: map.getZoom() }; savePrefs();
   });
-  map.on('dragstart', () => { if (iss.on && iss.follow) setFollow(false); });
+  map.on('dragstart', () => { if (iss.on && iss.follow) setFollow(false); route.follow = false; });
   $('status').onclick = () => { const c = map.getCenter(); copy(fmt(c.lat, 6) + ', ' + fmt(wrapLng(c.lng), 6)); };
 
   // ------------------------------------------------------------ layer sheet
@@ -785,6 +849,7 @@
       ' at ' + Math.round(iss.last.altitude) + ' km, moving ' + Math.round(iss.last.velocity).toLocaleString() + ' km/h.');
   };
   $('btnLocate').onclick = () => {
+    if (route.live) route.follow = true;
     if (!me.on) return startLocate();
     if (me.latlng && map.getCenter().distanceTo(me.latlng) > 30) {
       if (iss.on) setFollow(false);
@@ -798,6 +863,8 @@
     if ($('sheet').classList.contains('open')) { closeSheet(); return true; }
     if (!results.classList.contains('hidden')) { hideResults(); return true; }
     if (map._popup && map.hasLayer(map._popup)) { map.closePopup(); return true; }
+    if (!$('rcStepList').classList.contains('hidden')) { toggleSteps(false); return true; }
+    if (!$('routeCard').classList.contains('hidden')) { stopRoute(); return true; }
     if (!$('issCard').classList.contains('hidden')) { $('issCard').classList.add('hidden'); return true; }
     return false;
   };
@@ -808,10 +875,442 @@
   window.addEventListener('offline', setOffline);
   setOffline();
 
+  // ------------------------------------------------------------ live traffic, directions & incidents (TomTom)
+  const TT = 'https://api.tomtom.com';
+  let ttKey = store.get('ttKey', '');
+  const INC = { 0: ['Incident', '⚠️'], 1: ['Accident', '💥'], 2: ['Fog', '🌫️'], 3: ['Dangerous conditions', '⚠️'],
+    4: ['Rain', '🌧️'], 5: ['Ice', '🧊'], 6: ['Traffic jam', '🚗'], 7: ['Lane closed', '🚧'], 8: ['Road closed', '⛔'],
+    9: ['Roadworks', '🚧'], 10: ['Strong wind', '💨'], 11: ['Flooding', '🌊'], 14: ['Broken-down vehicle', '🚙'] };
+  const SECTION_COLORS = { 1: '#fdd835', 2: '#fb8c00', 3: '#e53935' };
+  const MAN = { DEPART: '🚩', ARRIVE: '🏁', ARRIVE_LEFT: '🏁', ARRIVE_RIGHT: '🏁', TURN_LEFT: '⬅', TURN_RIGHT: '➡',
+    SHARP_LEFT: '↙', SHARP_RIGHT: '↘', BEAR_LEFT: '↖', BEAR_RIGHT: '↗', KEEP_LEFT: '↖', KEEP_RIGHT: '↗', STRAIGHT: '⬆',
+    MAKE_UTURN: '↩', TRY_MAKE_UTURN: '↩', ROUNDABOUT_CROSS: '⟳', ROUNDABOUT_LEFT: '⟲', ROUNDABOUT_RIGHT: '⟳',
+    ROUNDABOUT_BACK: '⟲', MOTORWAY_ENTER: '⬆', MOTORWAY_EXIT_LEFT: '↖', MOTORWAY_EXIT_RIGHT: '↗', ENTER_FREEWAY: '⬆',
+    ENTER_HIGHWAY: '⬆', TAKE_EXIT: '↗', SWITCH_PARALLEL_ROAD: '↔', SWITCH_MAIN_ROAD: '↔', ENTRANCE_RAMP: '↗', FOLLOW: '⬆' };
+
+  map.createPane('trafficPane').style.zIndex = 340;
+  map.getPane('trafficPane').style.pointerEvents = 'none';
+  map.createPane('routePane').style.zIndex = 420;
+
+  function ttUrl(path, params) {
+    const q = Object.assign({ key: ttKey }, params || {});
+    return TT + path + '?' + Object.keys(q).map((k) => k + '=' + encodeURIComponent(q[k])).join('&');
+  }
+  async function ttFetch(path, params) {
+    const r = await fetch(ttUrl(path, params), { cache: 'no-store' });
+    if (r.status === 401 || r.status === 403) { const e = new Error('Your TomTom key was rejected'); e.key = true; throw e; }
+    if (r.status === 429) throw new Error('Free TomTom limit reached for today');
+    if (!r.ok) {
+      let msg = 'Traffic service error (' + r.status + ')';
+      try { const j = await r.json(); msg = (j.error && j.error.description) || (j.detailedError && j.detailedError.message) || msg; } catch (e) { /* keep default */ }
+      throw new Error(msg);
+    }
+    return r.json();
+  }
+  function needKey(msg) {
+    toast(msg || 'Add your free TomTom key first (Layers → Traffic service)', 4500);
+    openSheet();
+    setTimeout(() => { const k = $('ttKey'); k.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 350);
+  }
+
+  // ---- live traffic overlay (road colours + incident symbols), refreshed every 2 minutes
+  let trafficLayers = null, trafficTimer = null;
+  function makeTraffic() {
+    const stamp = Math.floor(Date.now() / 120000);
+    const k = encodeURIComponent(ttKey);
+    const opt = { pane: 'trafficPane', minZoom: 4, maxZoom: 20, maxNativeZoom: 20 };
+    return L.layerGroup([
+      L.tileLayer(TT + '/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=' + k + '&t=' + stamp,
+        Object.assign({ opacity: 0.85, attribution: 'Traffic &copy; <a href="https://www.tomtom.com">TomTom</a>' }, opt)),
+      L.tileLayer(TT + '/traffic/map/4/tile/incidents/s3/{z}/{x}/{y}.png?key=' + k + '&t=' + stamp, opt)
+    ]);
+  }
+  function setTraffic(on) {
+    if (on && !ttKey) { $('optTraffic').checked = false; return needKey(); }
+    prefs.traffic = on; savePrefs();
+    $('optTraffic').checked = on;
+    $('btnTraffic').classList.toggle('on', on);
+    if (trafficLayers) { map.removeLayer(trafficLayers); trafficLayers = null; }
+    clearInterval(trafficTimer);
+    if (!on) return;
+    trafficLayers = makeTraffic().addTo(map);
+    trafficTimer = setInterval(() => {
+      if (document.hidden || !trafficLayers) return;
+      const old = trafficLayers;
+      trafficLayers = makeTraffic().addTo(map);
+      setTimeout(() => map.removeLayer(old), 4000);   // swap without a blank flash
+    }, 120000);
+    if (map.getZoom() < 9) toast('Live traffic is on — zoom in to a city to see the roads');
+  }
+
+  // ---- API key setting
+  function showKeyStatus() {
+    $('ttStatus').textContent = ttKey
+      ? '✓ Key saved (' + ttKey.slice(0, 4) + '…' + ttKey.slice(-3) + '). Live traffic, incidents and directions are ready. To remove it, clear the box and tap Save.'
+      : 'Needed for live traffic, incidents and directions. Get a free key at developer.tomtom.com → Keys, then paste it here.';
+  }
+  $('ttSave').onclick = async () => {
+    const v = $('ttKey').value.trim().split(' ').join('');
+    if (!v) {
+      if (ttKey) { stopRoute(); setTraffic(false); ttKey = ''; store.set('ttKey', ''); showKeyStatus(); toast('Key removed'); }
+      return;
+    }
+    $('ttStatus').textContent = 'Checking key…';
+    const old = ttKey;
+    ttKey = v;
+    try {
+      await ttFetch('/traffic/services/5/incidentDetails', { bbox: '46.60,24.60,46.61,24.61', fields: '{incidents{type}}', timeValidityFilter: 'present' });
+      store.set('ttKey', v);
+      $('ttKey').value = '';
+      $('ttKey').blur();
+      showKeyStatus();
+      toast('Key saved — live traffic is on');
+      setTraffic(true);
+    } catch (e) {
+      ttKey = old;
+      $('ttStatus').textContent = e.key
+        ? '✗ That key was rejected. Copy the long key from developer.tomtom.com → Keys (not the App ID).'
+        : '✗ ' + (navigator.onLine ? e.message : 'No internet connection');
+    }
+  };
+  $('optTraffic').onchange = (e) => setTraffic(e.target.checked);
+  $('btnTraffic').onclick = () => setTraffic(!prefs.traffic);
+
+  // ---- directions
+  const route = { dest: null, name: '', start: null, line: [], xy: [], cum: [], lat0: 0, data: null,
+    layer: L.layerGroup().addTo(map), incLayer: L.layerGroup().addTo(map), incMarkers: {},
+    timer: null, live: false, follow: true, known: null, lastArr: null, busy: false, lastReroute: 0 };
+
+  const fmtDur = (sec) => { const m = Math.max(1, Math.round(sec / 60)); if (m < 60) return m + ' min'; return Math.floor(m / 60) + ' h ' + (m % 60) + ' min'; };
+  const fmtDist = (m) => m < 1000 ? Math.round(m / 10) * 10 + ' m' : (m / 1000).toFixed(m < 10000 ? 1 : 0) + ' km';
+  const fmtClock = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  // Flat projection in metres around the route — plenty accurate for "is this incident on my road?"
+  const toXY = (lat, lng, lat0) => [lng * 111320 * Math.cos(lat0 * RAD), lat * 110540];
+  function nearestOnRoute(lat, lng) {
+    const p = toXY(lat, lng, route.lat0), pts = route.xy;
+    let best = Infinity, bestI = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], len2 = dx * dx + dy * dy;
+      let t = len2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const ex = a[0] + t * dx - p[0], ey = a[1] + t * dy - p[1], d = ex * ex + ey * ey;
+      if (d < best) { best = d; bestI = i; }
+    }
+    return { d: Math.sqrt(best), i: bestI };
+  }
+
+  function getOrigin() {
+    if (me.on && me.latlng && Date.now() - me.fixTime < 120000) return Promise.resolve(me.latlng);
+    return new Promise((resolve) => {
+      let timer = null;
+      const done = (ll) => { clearTimeout(timer); resolve(ll); };
+      timer = setTimeout(() => { me.waiters = me.waiters.filter((w) => w !== done); resolve(me.latlng || null); }, 20000);
+      me.waiters.push(done);
+      if (!me.on) startLocate(true);
+    });
+  }
+
+  function openRouteCard() {
+    $('routeCard').classList.remove('hidden');
+    $('issCard').classList.add('hidden');
+    document.body.classList.add('routing');
+    toggleSteps(false);
+  }
+  function closeRouteCard() {
+    $('routeCard').classList.add('hidden');
+    document.body.classList.remove('routing');
+  }
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => document.documentElement.style.setProperty('--card-h', $('routeCard').offsetHeight + 'px')).observe($('routeCard'));
+  }
+  function toggleSteps(show) {
+    $('rcStepList').classList.toggle('hidden', !show);
+    $('rcList').classList.toggle('hidden', !!show);
+    $('rcSteps').classList.toggle('on', !!show);
+  }
+
+  async function startDirections(latlng, name) {
+    if (!ttKey) return needKey('To get live directions, add your free TomTom key first');
+    map.closePopup();
+    stopRoute(true);
+    if (iss.on) setFollow(false);
+    route.dest = L.latLng(latlng.lat, wrapLng(latlng.lng));
+    route.name = name || 'Dropped pin';
+    route.known = null; route.lastArr = null; route.follow = true;
+    openRouteCard();
+    $('rcTime').textContent = '…';
+    $('rcDist').textContent = '';
+    $('rcTraffic').classList.add('hidden');
+    $('rcList').innerHTML = '';
+    $('rcStepList').innerHTML = '';
+    $('rcUpdated').textContent = '';
+    $('rcSub').textContent = 'Finding your location…';
+    const from = await getOrigin();
+    if (!route.dest) return;   // closed while waiting
+    if (!from) { $('rcSub').textContent = 'Turn on Location (GPS) so the route can start from where you are.'; return; }
+    route.start = from;
+    $('rcSub').textContent = 'Getting the fastest route with live traffic…';
+    await refreshRoute(true);
+    if (route.dest && !route.timer) route.timer = setInterval(() => refreshRoute(false), 120000);
+  }
+
+  async function refreshRoute(fit) {
+    if (!route.dest || route.busy || document.hidden) return;
+    route.busy = true;
+    const from = (route.live && me.latlng) ? me.latlng : route.start;
+    try {
+      const path = '/routing/1/calculateRoute/' + from.lat.toFixed(6) + ',' + wrapLng(from.lng).toFixed(6) + ':' +
+        route.dest.lat.toFixed(6) + ',' + route.dest.lng.toFixed(6) + '/json';
+      const j = await ttFetch(path, { traffic: 'true', travelMode: 'car', routeType: 'fastest', sectionType: 'traffic',
+        instructionsType: 'text', language: 'en-GB', computeTravelTimeFor: 'all' });
+      if (!route.dest) return;
+      const rt = j.routes && j.routes[0];
+      if (!rt) throw new Error('No road route found to this place');
+      const line = [];
+      rt.legs.forEach((leg) => leg.points.forEach((p) => line.push([p.latitude, p.longitude])));
+      route.data = rt;
+      route.line = line;
+      route.lat0 = line[0][0];
+      route.xy = line.map(([a, b]) => toXY(a, b, route.lat0));
+      route.cum = [0];
+      for (let i = 1; i < route.xy.length; i++) {
+        const dx = route.xy[i][0] - route.xy[i - 1][0], dy = route.xy[i][1] - route.xy[i - 1][1];
+        route.cum.push(route.cum[i - 1] + Math.sqrt(dx * dx + dy * dy));
+      }
+      drawRoute(rt);
+      renderRouteSummary(rt);
+      renderSteps(rt);
+      if (fit) fitRoute();
+      loadRouteIncidents();
+    } catch (e) {
+      if (e.key) { stopRoute(); needKey('Your TomTom key was rejected — check it in Layers → Traffic service'); return; }
+      $('rcUpdated').textContent = '⚠ ' + (navigator.onLine ? e.message : 'No internet connection') + ' — will retry';
+      if (!route.data) $('rcSub').textContent = e.message;
+    } finally {
+      route.busy = false;
+    }
+  }
+
+  function fitRoute() {
+    if (route.line.length < 2) return;
+    const h = $('routeCard').offsetHeight || 220;
+    map.fitBounds(L.latLngBounds(route.line), { paddingTopLeft: [40, 90], paddingBottomRight: [80, h + 40], maxZoom: 17 });
+  }
+
+  const pinIcon = (color, glyph) => L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+    html: '<div class="rt-pin" style="background:' + color + '">' + glyph + '</div>' });
+
+  function drawRoute(rt) {
+    route.layer.clearLayers();
+    const o = { pane: 'routePane', interactive: false, lineJoin: 'round', lineCap: 'round' };
+    L.polyline(route.line, Object.assign({ color: '#0d47a1', weight: 11, opacity: 0.6 }, o)).addTo(route.layer);
+    L.polyline(route.line, Object.assign({ color: '#2f8cff', weight: 6, opacity: 1 }, o)).addTo(route.layer);
+    (rt.sections || []).filter((s) => s.sectionType === 'TRAFFIC').forEach((s) => {
+      const pts = route.line.slice(s.startPointIndex, s.endPointIndex + 1);
+      if (pts.length < 2) return;
+      const closed = s.simpleCategory === 'ROAD_CLOSURE';
+      const color = closed ? '#b71c1c' : s.simpleCategory === 'ROAD_WORK' ? '#fb8c00' : (SECTION_COLORS[s.magnitudeOfDelay] || '#fb8c00');
+      L.polyline(pts, Object.assign({ color, weight: 6, opacity: 1, dashArray: closed ? '4 9' : null }, o)).addTo(route.layer);
+    });
+    if (!route.live) L.marker(route.line[0], { icon: pinIcon('#2e7d32', '●'), keyboard: false }).addTo(route.layer);
+    L.marker(route.line[route.line.length - 1], { icon: pinIcon('#d32f2f', '🏁'), zIndexOffset: 500, keyboard: false })
+      .addTo(route.layer).bindPopup(escapeHtml(route.name));
+  }
+
+  function renderRouteSummary(rt) {
+    const s = rt.summary;
+    $('rcTime').textContent = fmtDur(s.travelTimeInSeconds);
+    $('rcDist').textContent = fmtDist(s.lengthInMeters) + ' · arrive ' + fmtClock(s.arrivalTime);
+    $('rcSub').textContent = 'To ' + route.name;
+    const d = s.trafficDelayInSeconds || 0, t = $('rcTraffic');
+    t.classList.remove('hidden', 'ok', 'warn', 'bad');
+    if (d >= 60) {
+      t.classList.add(d >= 900 ? 'bad' : 'warn');
+      t.textContent = '🚗 +' + fmtDur(d) + ' because of traffic' + (s.trafficLengthInMeters ? ' · ' + fmtDist(s.trafficLengthInMeters) + ' of slow roads' : '');
+    } else {
+      t.classList.add('ok');
+      t.textContent = '✓ No traffic delays on this route right now';
+    }
+    const arr = Date.parse(s.arrivalTime);
+    if (route.lastArr != null && Math.abs(arr - route.lastArr) >= 5 * 60000) {
+      toast((arr > route.lastArr ? '⚠ Traffic got worse — ' : '✓ Traffic eased — ') + 'now arriving ' + fmtClock(arr), 6000);
+      if (navigator.vibrate) navigator.vibrate(300);
+    }
+    route.lastArr = arr;
+    $('rcUpdated').textContent = (route.live ? '🔴 Live · ' : '') + 'Updated ' + fmtClock(Date.now()) +
+      ' · refreshes every ' + (route.live ? 'minute' : '2 minutes') + ' · Traffic © TomTom';
+  }
+
+  function renderSteps(rt) {
+    const ins = (rt.guidance && rt.guidance.instructions) || [];
+    $('rcStepList').innerHTML = '<h4>Turn-by-turn</h4>' + ins.map((i, n) =>
+      '<button class="rc-item" data-n="' + n + '"><span class="rc-ico">' + (MAN[i.maneuver] || '•') + '</span><span><b>' +
+      escapeHtml(i.message || i.maneuver || '') + '</b><small>at ' + fmtDist(i.routeOffsetInMeters || 0) + '</small></span></button>').join('');
+    $('rcStepList').querySelectorAll('.rc-item').forEach((b) => b.onclick = () => {
+      const i = ins[+b.dataset.n];
+      route.follow = false;
+      map.flyTo([i.point.latitude, i.point.longitude], 17);
+    });
+  }
+
+  function incTitle(p) { return (INC[p.iconCategory] || INC[0])[0]; }
+  function incDetail(p) {
+    const ev = (p.events || []).map((e) => e.description).filter(Boolean);
+    const parts = [];
+    if (ev.length) parts.push(ev.join(', '));
+    if (p.from || p.to) parts.push([p.from, p.to].filter(Boolean).join(' → '));
+    return parts.join(' · ');
+  }
+
+  // TomTom allows up to 10,000 km² per incident query, so long routes are split into several boxes.
+  function routeBoxes(line) {
+    const area = (b) => (b[2] - b[0]) * 111 * (b[3] - b[1]) * 111 * Math.cos(((b[0] + b[2]) / 2) * RAD);
+    const boxes = [];
+    let box = null;
+    line.forEach(([lat, lng]) => {
+      if (!box) { box = [lat, lng, lat, lng]; return; }
+      const nb = [Math.min(box[0], lat), Math.min(box[1], lng), Math.max(box[2], lat), Math.max(box[3], lng)];
+      if (area(nb) > 8000) { boxes.push(box); box = [lat, lng, lat, lng]; } else box = nb;
+    });
+    if (box) boxes.push(box);
+    return boxes;
+  }
+
+  async function loadRouteIncidents() {
+    const line = route.line;
+    if (line.length < 2) return;
+    const fields = '{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description,code},startTime,endTime,from,to,length,delay,roadNumbers}}}';
+    let all = [];
+    try {
+      const res = await Promise.all(routeBoxes(line).slice(0, 8).map((b) => ttFetch('/traffic/services/5/incidentDetails', {
+        bbox: [b[1] - 0.005, b[0] - 0.005, b[3] + 0.005, b[2] + 0.005].map((v) => v.toFixed(5)).join(','),
+        fields, language: 'en-GB', timeValidityFilter: 'present' })));
+      res.forEach((j) => { all = all.concat(j.incidents || []); });
+    } catch (e) {
+      return;   // the route itself still shows traffic delays
+    }
+    if (line !== route.line) return;   // a newer route arrived meanwhile
+
+    const seen = new Set(), found = [];
+    all.forEach((inc) => {
+      const p = inc.properties || {};
+      if (!p.id || seen.has(p.id)) return;
+      seen.add(p.id);
+      const g = inc.geometry || {};
+      const coords = g.type === 'Point' ? [g.coordinates] : (g.coordinates || []);
+      if (!coords.length) return;
+      const first = coords[0], mid = coords[Math.floor(coords.length / 2)], last = coords[coords.length - 1];
+      const hits = [first, mid, last].map(([lng, lat]) => nearestOnRoute(lat, lng)).filter((h) => h.d < 25);
+      if (hits.length < 2) return;
+      // Same direction as we drive? (skips the opposite carriageway)
+      if (coords.length > 1) {
+        const i = hits[0].i, a = route.xy[i], b = route.xy[Math.min(i + 1, route.xy.length - 1)];
+        const s = toXY(first[1], first[0], route.lat0), e = toXY(last[1], last[0], route.lat0);
+        if ((b[0] - a[0]) * (e[0] - s[0]) + (b[1] - a[1]) * (e[1] - s[1]) < 0) return;
+      }
+      const idx = Math.min.apply(null, hits.map((h) => h.i));
+      found.push({ p, idx, at: [mid[1], mid[0]], ahead: route.cum[idx] || 0 });
+    });
+    found.sort((a, b) => a.idx - b.idx);
+
+    if (route.known) {
+      const fresh = found.filter((f) => !route.known.has(f.p.id) && f.p.iconCategory !== 9);
+      if (fresh.length) {
+        toast('⚠ New on your route: ' + incTitle(fresh[0].p) + (fresh.length > 1 ? ' (+' + (fresh.length - 1) + ' more)' : ''), 7000);
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      }
+    }
+    route.known = new Set(found.map((f) => f.p.id));
+    drawIncidents(found);
+    renderIncidentList(found);
+  }
+
+  function incPopup(f) {
+    const p = f.p;
+    return '<div class="inc-pop"><b>' + (INC[p.iconCategory] || INC[0])[1] + ' ' + escapeHtml(incTitle(p)) + '</b>' +
+      '<small>' + escapeHtml(incDetail(p)) + '</small>' +
+      (p.delay ? '<small>Delay: about ' + fmtDur(p.delay) + '</small>' : '') +
+      (p.startTime ? '<small>Since ' + new Date(p.startTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + '</small>' : '') +
+      '</div>';
+  }
+  function drawIncidents(found) {
+    route.incLayer.clearLayers();
+    route.incMarkers = {};
+    found.forEach((f) => {
+      const icon = L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+        html: '<div class="inc-ico m' + (f.p.magnitudeOfDelay || 0) + '">' + (INC[f.p.iconCategory] || INC[0])[1] + '</div>' });
+      route.incMarkers[f.p.id] = L.marker(f.at, { icon, zIndexOffset: 600, keyboard: false }).bindPopup(incPopup(f)).addTo(route.incLayer);
+    });
+  }
+  function renderIncidentList(found) {
+    const box = $('rcList');
+    if (!found.length) { box.innerHTML = '<div class="rc-empty">✓ No accidents, closures or roadworks reported on your route.</div>'; return; }
+    box.innerHTML = '<h4>On your route (' + found.length + ')</h4>' + found.map((f, n) =>
+      '<button class="rc-item" data-n="' + n + '"><span class="rc-ico">' + (INC[f.p.iconCategory] || INC[0])[1] + '</span><span><b>' +
+      escapeHtml(incTitle(f.p)) + (f.p.delay ? ' · +' + fmtDur(f.p.delay) : '') + '</b><small>' +
+      'in ' + fmtDist(f.ahead) + (incDetail(f.p) ? ' · ' + escapeHtml(incDetail(f.p)) : '') + '</small></span></button>').join('');
+    box.querySelectorAll('.rc-item').forEach((b) => b.onclick = () => {
+      const f = found[+b.dataset.n];
+      route.follow = false;
+      map.flyTo(f.at, 16);
+      setTimeout(() => { const m = route.incMarkers[f.p.id]; if (m) m.openPopup(); }, 900);
+    });
+  }
+
+  function setRouteLive(on) {
+    if (!route.dest) return;
+    route.live = on;
+    route.follow = true;
+    $('rcLive').classList.toggle('on', on);
+    $('rcLive').lastChild.textContent = on ? 'Live' : 'Start live';
+    clearInterval(route.timer);
+    route.timer = setInterval(() => refreshRoute(false), on ? 60000 : 120000);
+    if (on) {
+      if (!me.on) startLocate(true);
+      if (me.latlng) map.flyTo(me.latlng, Math.max(map.getZoom(), 16));
+      refreshRoute(false);
+      toast('Live: route, traffic and incidents update every minute');
+    }
+  }
+  function onRouteLocation(ll) {
+    if (!route.dest || !route.live) return;
+    if (route.follow) map.panTo(ll, { animate: true });
+    if (ll.distanceTo(route.dest) < 40) { toast('🏁 You have arrived', 5000); setRouteLive(false); return; }
+    if (route.xy.length > 1 && Date.now() - route.lastReroute > 20000 && nearestOnRoute(ll.lat, ll.lng).d > 80) {
+      route.lastReroute = Date.now();
+      toast('Off route — finding a new one…', 2500);
+      refreshRoute(false);
+    }
+  }
+  function stopRoute(keepCard) {
+    clearInterval(route.timer);
+    route.timer = null;
+    route.dest = null; route.data = null; route.line = []; route.xy = []; route.live = false;
+    route.layer.clearLayers();
+    route.incLayer.clearLayers();
+    $('rcLive').classList.remove('on');
+    $('rcLive').lastChild.textContent = 'Start live';
+    if (!keepCard) closeRouteCard();
+  }
+
+  $('rcHead').onclick = () => { route.follow = false; fitRoute(); };
+  $('rcClose').onclick = (e) => { e.stopPropagation(); stopRoute(); };
+  $('rcLive').onclick = () => setRouteLive(!route.live);
+  $('rcSteps').onclick = () => toggleSteps($('rcStepList').classList.contains('hidden'));
+  $('rcGmaps').onclick = () => {
+    if (!route.dest) return;
+    const url = 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + fmt(route.dest.lat, 6) + ',' + fmt(route.dest.lng, 6);
+    if (hasBridge) Android.openUrl(url); else window.open(url, '_blank');
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && route.dest) refreshRoute(false); });
+
   // ------------------------------------------------------------ start
   setBase(prefs.base);
   setLive(prefs.live);
   setNight(prefs.night);
+  showKeyStatus();
+  if (prefs.traffic && ttKey) setTraffic(true);
   updateStatus();
 })();
 </script>
