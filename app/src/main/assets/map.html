@@ -201,6 +201,16 @@
   .keyrow input { flex: 1; min-width: 0; background: rgba(255,255,255,.07); border: 1px solid var(--line); color: var(--text);
     border-radius: 10px; padding: 9px 10px; font: inherit; font-size: 14px; -webkit-user-select: text; user-select: text; }
   .keyrow .chip { flex: none; padding: 9px 18px; background: var(--accent); color: #0b1220; }
+  .cam-status { display: block; color: var(--accent) !important; margin-top: 2px; }
+  .cam-osm { position: relative; width: 26px; height: 26px; }
+  .cam-osm span { position: absolute; inset: 0; display: grid; place-items: center; background: #fff; border-radius: 50%;
+    border: 2px solid #455a64; font-size: 13px; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
+  .cam-osm i { position: absolute; left: 50%; top: 50%; width: 0; height: 0; margin-left: -16px; margin-top: -38px;
+    border-left: 16px solid transparent; border-right: 16px solid transparent; border-bottom: 38px solid rgba(255,82,82,.38); transform-origin: 50% 100%; }
+  .cam-web { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #2e7d32;
+    border: 3px solid #fff; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.45); }
+  .cam-pop img { display: block; width: 100%; max-width: 260px; border-radius: 8px; margin-top: 8px; }
+  .cam-pop a, .cam-note a { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -292,10 +302,16 @@
     <label class="switch"><input type="checkbox" id="optNight"><span></span></label></div>
   <div class="row"><div class="txt"><b>Live traffic &amp; incidents</b><small>Road speeds, accidents, closures, roadworks</small></div>
     <label class="switch"><input type="checkbox" id="optTraffic"><span></span></label></div>
+  <div class="row"><div class="txt"><b>Cameras</b><small>Public live webcams + mapped CCTV locations</small><small id="camStatus" class="cam-status"></small></div>
+    <label class="switch"><input type="checkbox" id="optCams"><span></span></label></div>
 
   <h3>Traffic service (TomTom)</h3>
   <div class="field keyrow"><input id="ttKey" type="text" placeholder="Paste your TomTom API key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"><button class="chip" id="ttSave">Save</button></div>
   <p class="note" id="ttStatus"></p>
+
+  <h3>Webcams (Windy)</h3>
+  <div class="field keyrow"><input id="wdKey" type="text" placeholder="Paste your Windy webcams key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"><button class="chip" id="wdSave">Save</button></div>
+  <p class="note" id="wdStatus"></p>
 </div>
 
 <!-- Directions with live traffic -->
@@ -347,7 +363,7 @@
   };
   const prefs = Object.assign({
     base: 'satellite', labels: true, roads: false, night: true,
-    live: 'off', liveOpacity: 1, traffic: false, view: { lat: 20, lng: 10, z: 3 }
+    live: 'off', liveOpacity: 1, traffic: false, cams: false, view: { lat: 20, lng: 10, z: 3 }
   }, store.get('prefs', {}));
   const savePrefs = () => store.set('prefs', prefs);
 
@@ -1309,12 +1325,180 @@
   };
   document.addEventListener('visibilitychange', () => { if (!document.hidden && route.dest) refreshRoute(false); });
 
+  // ------------------------------------------------------------ cameras: mapped CCTV (OpenStreetMap) + public live webcams (Windy)
+  let windyKey = store.get('windyKey', '');
+  const cams = { on: false, osm: L.layerGroup(), web: L.layerGroup(), osmSeen: new Set(), webSeen: new Set(),
+    osmLoaded: [], webLoaded: [], osmBusy: false, webBusy: false, timer: null };
+  const COMPASS = { N: 0, NNE: 22, NE: 45, ENE: 67, E: 90, ESE: 112, SE: 135, SSE: 157, S: 180, SSW: 202, SW: 225, WSW: 247, W: 270, WNW: 292, NW: 315, NNW: 337 };
+  function camDirection(t) {
+    const raw = String(t['camera:direction'] || t.direction || '').trim().toUpperCase();
+    if (!raw) return null;
+    if (COMPASS[raw] != null) return COMPASS[raw];
+    const n = parseFloat(raw);
+    return isNaN(n) ? null : n;
+  }
+  function camKind(t) {
+    if (t.highway === 'speed_camera' || t.enforcement === 'maxspeed') return ['Speed camera', '🚨'];
+    if ((t['surveillance:type'] || '').toUpperCase() === 'ALPR') return ['Number-plate camera', '🚔'];
+    if (t['surveillance:type'] === 'guard') return ['Security guard post', '💂'];
+    return ['CCTV camera', '📷'];
+  }
+  const ZONE = { traffic: 'Traffic / road', street: 'Street', town: 'Public area', shop: 'Shop', building: 'Building', parking: 'Car park', bank: 'Bank', entrance: 'Entrance', public: 'Public area', outdoor: 'Outdoor area', indoor: 'Indoors' };
+
+  function camsNote(text) { $('camStatus').textContent = text; }
+
+  // ---- OpenStreetMap: where cameras are (no video)
+  async function loadOsmCams() {
+    if (!cams.on || cams.osmBusy) return;
+    if (map.getZoom() < 15) { camsNote('Zoom in to street level to see mapped CCTV cameras.'); return; }
+    const view = map.getBounds();
+    if (cams.osmLoaded.some((b) => b.contains(view))) return;
+    const b = view.pad(0.25);
+    const bbox = [b.getSouth(), wrapLng(b.getWest()), b.getNorth(), wrapLng(b.getEast())].map((v) => v.toFixed(5)).join(',');
+    const q = '[out:json][timeout:25];(node["man_made"="surveillance"](' + bbox + ');node["highway"="speed_camera"](' + bbox + '););out body 800;';
+    cams.osmBusy = true;
+    try {
+      const r = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q));
+      if (!r.ok) throw new Error(r.status === 429 ? 'Camera map is busy — try again in a minute' : 'Camera map error (' + r.status + ')');
+      const j = await r.json();
+      if (!cams.on) return;
+      cams.osmLoaded.push(b);
+      (j.elements || []).forEach((el) => {
+        if (cams.osmSeen.has(el.id) || el.lat == null) return;
+        cams.osmSeen.add(el.id);
+        const t = el.tags || {}, kind = camKind(t), dir = camDirection(t);
+        const icon = L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+          html: '<div class="cam-osm">' + (dir != null ? '<i style="transform:rotate(' + dir + 'deg)"></i>' : '') + '<span>' + kind[1] + '</span></div>' });
+        const zone = t['surveillance:zone'] || t.surveillance;
+        const lines = [];
+        if (zone) lines.push('Watches: ' + escapeHtml(ZONE[zone] || zone));
+        if (dir != null) lines.push('Points: ' + Math.round(dir) + '° (' + Object.keys(COMPASS).reduce((a, k) => Math.abs(((COMPASS[k] - dir + 540) % 360) - 180) < Math.abs(((COMPASS[a] - dir + 540) % 360) - 180) ? k : a, 'N') + ')');
+        if (t['camera:mount']) lines.push('Mounted on: ' + escapeHtml(t['camera:mount']));
+        if (t.operator) lines.push('Operator: ' + escapeHtml(t.operator));
+        if (t.maxspeed) lines.push('Speed limit: ' + escapeHtml(t.maxspeed));
+        L.marker([el.lat, el.lon], { icon, keyboard: false, zIndexOffset: 300 })
+          .bindPopup('<div class="inc-pop"><b>' + kind[1] + ' ' + kind[0] + '</b>' + lines.map((l) => '<small>' + l + '</small>').join('') +
+            '<small class="cam-note">Location only. It was mapped by OpenStreetMap volunteers, and its video isn’t public.</small></div>')
+          .addTo(cams.osm);
+      });
+      camsNote(cams.osmSeen.size ? cams.osmSeen.size + ' mapped cameras loaded so far.' : 'No cameras have been mapped here yet.');
+    } catch (e) {
+      camsNote(navigator.onLine ? e.message : 'No internet connection');
+    } finally {
+      cams.osmBusy = false;
+    }
+  }
+
+  // ---- Windy: public webcams with live pictures
+  async function windyFetch(path) {
+    const r = await fetch('https://api.windy.com/webcams/api/v3' + path, { headers: { 'x-windy-api-key': windyKey } });
+    if (r.status === 401 || r.status === 403) { const e = new Error('Your Windy key was rejected'); e.key = true; throw e; }
+    if (!r.ok) throw new Error('Webcam service error (' + r.status + ')');
+    return r.json();
+  }
+  async function loadWebcams() {
+    if (!cams.on || !windyKey || cams.webBusy || map.getZoom() < 6) return;
+    const c = map.getCenter();
+    const radius = Math.max(5, Math.min(250, Math.round(c.distanceTo(map.getBounds().getNorthEast()) / 1000)));
+    if (cams.webLoaded.some((w) => w.c.distanceTo(c) / 1000 + radius <= w.r)) return;
+    cams.webBusy = true;
+    try {
+      const j = await windyFetch('/webcams?nearby=' + c.lat.toFixed(4) + ',' + wrapLng(c.lng).toFixed(4) + ',' + radius +
+        '&limit=50&include=location&lang=en');
+      if (!cams.on) return;
+      cams.webLoaded.push({ c, r: radius });
+      (j.webcams || []).forEach((w) => {
+        const id = w.webcamId || w.id, loc = w.location || {};
+        if (!id || cams.webSeen.has(id) || loc.latitude == null) return;
+        cams.webSeen.add(id);
+        const icon = L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15], html: '<div class="cam-web">🎥</div>' });
+        const m = L.marker([loc.latitude, loc.longitude], { icon, keyboard: false, zIndexOffset: 400 })
+          .bindPopup('<div class="inc-pop"><b>🎥 ' + escapeHtml(w.title || 'Webcam') + '</b><small>Loading latest picture…</small></div>', { maxWidth: 300 })
+          .addTo(cams.web);
+        m.on('popupopen', () => showWebcam(m, id, w.title));
+      });
+    } catch (e) {
+      if (e.key) { windyKey = ''; store.set('windyKey', ''); showWindyStatus('✗ Your Windy key was rejected. Paste it again below.'); }
+    } finally {
+      cams.webBusy = false;
+    }
+  }
+  async function showWebcam(marker, id, title) {
+    try {
+      // Picture links expire after a few minutes on the free plan, so fetch fresh ones each time.
+      const w = await windyFetch('/webcams/' + id + '?include=images,urls,player&lang=en');
+      const img = w.images && w.images.current && (w.images.current.preview || w.images.current.thumbnail);
+      const when = w.lastUpdatedOn ? new Date(w.lastUpdatedOn).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+      const live = (w.player && (w.player.live || w.player.day)) || (w.urls && w.urls.detail) || ('https://www.windy.com/webcams/' + id);
+      marker.setPopupContent('<div class="inc-pop cam-pop"><b>🎥 ' + escapeHtml(w.title || title || 'Webcam') + '</b>' +
+        (img ? '<img src="' + escapeHtml(img) + '" alt="Latest webcam picture">' : '<small>No picture available right now.</small>') +
+        (when ? '<small>Picture taken ' + escapeHtml(when) + '</small>' : '') +
+        '<small><a href="' + escapeHtml(live) + '" target="_blank" rel="noopener">Open live view / time-lapse ↗</a></small>' +
+        '<small class="cam-note">Webcams provided by <a href="https://www.windy.com/" target="_blank" rel="noopener">windy.com</a></small></div>');
+    } catch (e) {
+      marker.setPopupContent('<div class="inc-pop"><b>🎥 ' + escapeHtml(title || 'Webcam') + '</b><small>' + escapeHtml(e.message) + '</small></div>');
+    }
+  }
+
+  function refreshCams() {
+    clearTimeout(cams.timer);
+    cams.timer = setTimeout(() => { loadOsmCams(); loadWebcams(); }, 600);
+  }
+  function setCams(on) {
+    cams.on = on;
+    prefs.cams = on; savePrefs();
+    $('optCams').checked = on;
+    if (on) {
+      cams.osm.addTo(map); cams.web.addTo(map);
+      if (map.getZoom() < 15) toast(windyKey ? 'Cameras on — webcams show from city level, CCTV at street level' : 'Cameras on — zoom in to street level to see mapped CCTV');
+      refreshCams();
+    } else {
+      map.removeLayer(cams.osm); map.removeLayer(cams.web);
+      cams.osm.clearLayers(); cams.web.clearLayers();
+      cams.osmSeen.clear(); cams.webSeen.clear(); cams.osmLoaded = []; cams.webLoaded = [];
+      camsNote('');
+    }
+  }
+  map.on('moveend', () => { if (cams.on) refreshCams(); });
+  $('optCams').onchange = (e) => setCams(e.target.checked);
+
+  function showWindyStatus(msg) {
+    $('wdStatus').textContent = msg || (windyKey
+      ? '✓ Windy key saved (' + windyKey.slice(0, 4) + '…' + windyKey.slice(-3) + '). Public webcams with live pictures appear when Cameras is on.'
+      : 'Optional: for public webcams with live pictures, get a free key at api.windy.com/keys and paste it here.');
+  }
+  $('wdSave').onclick = async () => {
+    const v = $('wdKey').value.trim().split(' ').join('');
+    if (!v) {
+      if (windyKey) { windyKey = ''; store.set('windyKey', ''); cams.web.clearLayers(); cams.webSeen.clear(); cams.webLoaded = []; showWindyStatus(); toast('Windy key removed'); }
+      return;
+    }
+    $('wdStatus').textContent = 'Checking key…';
+    const old = windyKey;
+    windyKey = v;
+    try {
+      await windyFetch('/webcams?limit=1');
+      store.set('windyKey', v);
+      $('wdKey').value = '';
+      $('wdKey').blur();
+      showWindyStatus();
+      toast('Windy key saved — webcams are on');
+      if (!cams.on) setCams(true); else refreshCams();
+    } catch (e) {
+      windyKey = old;
+      $('wdStatus').textContent = e.key ? '✗ That key was rejected. Copy the Webcams API key from api.windy.com/keys.'
+        : '✗ ' + (navigator.onLine ? e.message : 'No internet connection');
+    }
+  };
+
   // ------------------------------------------------------------ start
   setBase(prefs.base);
   setLive(prefs.live);
   setNight(prefs.night);
   showKeyStatus();
   if (prefs.traffic && ttKey) setTraffic(true);
+  showWindyStatus();
+  if (prefs.cams) setCams(true);
   updateStatus();
 })();
 </script>
